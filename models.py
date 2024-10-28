@@ -199,7 +199,8 @@ class Transformer(lightning.LightningModule):
 			  n_heads:int,
 			  n_layers:int,
 			  hidden_dim:int,
-			  expansion_factor:int):
+			  expansion_factor:int,
+			  n_structures:int=2):
 		
 		super().__init__()
 		
@@ -211,7 +212,7 @@ class Transformer(lightning.LightningModule):
 
 		self.layers = nn.Sequential(*layers)
 		self.masked_lm_head = nn.Linear(hidden_dim,n_amino)
-		self.structure_head = nn.Linear(hidden_dim,2)
+		self.structure_head = nn.Linear(hidden_dim,n_structures)
 
 	def forward(self,x,mask):
 
@@ -284,7 +285,8 @@ class HyenaFormer(lightning.LightningModule):
 			  n_amino:int,
 			  amino_dim:int,
 			  kernel_size:int,
-			  n_layers:int):
+			  n_layers:int,
+			  n_structures:int=2):
 
 		super().__init__()
 		
@@ -296,7 +298,7 @@ class HyenaFormer(lightning.LightningModule):
 
 		self.layers = nn.Sequential(*layers)
 		self.masked_lm_head = nn.Linear(amino_dim,n_amino)
-		self.structure_head = nn.Linear(amino_dim,2)
+		self.structure_head = nn.Linear(amino_dim,n_structures)
 
 	def forward(self,x,mask):
 
@@ -325,7 +327,8 @@ class StrippedHyena(lightning.LightningModule):
 			  n_amino:int,
 			  amino_dim:int,
 			  kernel_size:int,
-			  n_layers:int):
+			  n_layers:int,
+			  n_structures:int=2):
 
 		super().__init__()
 		
@@ -338,7 +341,7 @@ class StrippedHyena(lightning.LightningModule):
 
 		self.layers = nn.Sequential(*layers)
 		self.masked_lm_head = nn.Linear(amino_dim,n_amino)
-		self.structure_head = nn.Linear(amino_dim,2)
+		self.structure_head = nn.Linear(amino_dim,n_structures)
 
 	def forward(self,x,mask):
 
@@ -367,7 +370,8 @@ class CNN(lightning.LightningModule):
 			n_amino:int,
 			amino_dim:int,
 			n_layers:int,
-			kernel_size:int):
+			kernel_size:int,
+			n_structures:int=2):
 		
 		super().__init__()
 		
@@ -412,7 +416,8 @@ class LSTM(lightning.LightningModule):
 	def __init__(self,
 			n_amino:int,
 			amino_dim:int,
-			n_layers:int,):
+			n_layers:int,
+			n_structures:int=2):
 		
 		super().__init__()
 		
@@ -420,7 +425,7 @@ class LSTM(lightning.LightningModule):
 		self.layers = nn.LSTM(amino_dim,amino_dim,n_layers,batch_first=True,
 						bidirectional=True)
 		self.masked_lm_head = nn.Linear(amino_dim*2,n_amino)
-		self.structure_head = nn.Linear(amino_dim*2,2)
+		self.structure_head = nn.Linear(amino_dim*2,n_structures)
 
 	def forward(self,x,mask):
 

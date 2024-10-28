@@ -12,6 +12,7 @@ from lightning.fabric import Fabric
 from dataclasses import dataclass
 import einx
 from models import StrippedHyena,Transformer,HyenaFormer
+import pandas as pd
 
 TRAINING_PATH = "training_data/labels.txt"
 DEVICE = "cuda"
@@ -22,40 +23,22 @@ d = {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
      'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W', 
      'ALA': 'A', 'VAL':'V', 'GLU': 'E', 'TYR': 'Y', 'MET': 'M'}
 
-AMINO_ACIDS = list(d.values())
+amino_acids = list(d.values())
 
-AMINO_TO_INT_DICT = {i:idx+3 for idx,i in enumerate(AMINO_ACIDS)}
+AMINO_TO_INT_DICT = {i:idx+3 for idx,i in enumerate(amino_acids)}
 AMINO_TO_INT_DICT["<PAD>"] = 0
 AMINO_TO_INT_DICT["<MASK>"] = 1
 AMINO_TO_INT_DICT["<END>"] = 0
 INT_TO_AMINO_DICT = {v:k for v,k in AMINO_TO_INT_DICT.items()}
 
-SECONDARY_TO_INT_DICT = {"<PAD>":2,"-":0,"H":1,"<END>":0}
-INT_TO_SECONDARY_DICT = {v:k for v,k in SECONDARY_TO_INT_DICT.items()}
 
-def load_sequences(path):
+SST2_TO_INT_DICT = {"<PAD>":0,"<END>":0,"H":1,"C":2,"E":2}
+SST3_TO_INT_DICT = {"<PAD>":0,"<END>":0,"H":1,"C":2,"E":3}
+SST8_TO_INT_DICT = {"<PAD>":0,"<END>":0,"H":1,"C":2,"E":3,"B":4,"G":5,"I":6,"T":7,"S":8}
 
-	lines = []
-
-	with open(TRAINING_PATH) as f:
-		for i in f:
-			lines.append(i)
-
-	n_sequences = len(lines)//3
-
-	sequences = []
-
-	for i in range(n_sequences):
-		seq_id,seq_len = (lines[i*3]).split(" | ")
-		assert seq_id[0] == ">"
-		seq_id = seq_id[1:]
-		seq_len = int(seq_len)
-		seq = lines[i*3+1].strip()
-		labels = lines[i*3+2].strip()
-
-		sequences.append([seq_id,seq,labels])
-
-	return sequences
+INT_TO_SST2 = {v:k for v,k in SST2_TO_INT_DICT.items()}
+INT_TO_SST3 = {v:k for v,k in SST3_TO_INT_DICT.items()}
+INT_TO_SST8 = {v:k for v,k in SST8_TO_INT_DICT.items()}
 
 def tokenize_from_dict(sequence,tokenizer_dict,length=None):
 
@@ -75,21 +58,28 @@ def tokenize_from_dict(sequence,tokenizer_dict,length=None):
 
 	return torch.tensor(seq)
 
-def get_xy(sequences,l_max):
+def get_xy(df,l_max):
 
 	inputs = []
-	labels = []
+	sst2_labels = []
+	sst3_labels = []
+	sst8_labels = []
 
-	for seq in sequences:
-		if len(seq[1])<=l_max-1:
-			inputs.append(tokenize_from_dict(seq[1],AMINO_TO_INT_DICT,l_max))
-			labels.append(tokenize_from_dict(seq[2],SECONDARY_TO_INT_DICT,l_max))
+	for index,row in df.iterrows():
+		# we ignore sequences with special amino acids
+		if "*" in row["seq"]:
+			continue
 
-	return torch.stack(inputs),torch.stack(labels)
+		if len(row["seq"]) <= l_max-1:
+			inputs.append(tokenize_from_dict(row["seq"],AMINO_TO_INT_DICT,l_max))
+			sst2_labels.append(tokenize_from_dict(row["sst3"],SST2_TO_INT_DICT,l_max))
+			sst3_labels.append(tokenize_from_dict(row["sst3"],SST3_TO_INT_DICT,l_max))
+			sst8_labels.append(tokenize_from_dict(row["sst8"],SST8_TO_INT_DICT,l_max))
+
+	return torch.stack(inputs),torch.stack(sst2_labels),torch.stack(sst3_labels),torch.stack(sst8_labels)
 
 def one_hot(x, num_classes):
     return torch.eye(num_classes).to(x.device)[x]
-
 
 def masked_accuracy(logits, labels, mask):
     predictions = torch.argmax(logits, axis=-1)
@@ -384,17 +374,17 @@ def lm_train(fabric,
 
 if __name__ == "__main__":
 
-	sequences = load_sequences(TRAINING_PATH)
+	df = pd.read_csv("extra_data/2018-06-06-pdb-intersect-pisces.csv")
 
-	inputs,labels = get_xy(sequences,384)
+	inputs,sst2_labels,sst3_labels,sst8_labels = get_xy(df,384)
 
 	fabric = Fabric(accelerator="cuda",precision="bf16-mixed")
 
 	fabric.launch()
 
-	x_test,y_test,x_train,y_train = train_val_split(inputs,labels,0.05)
+	x_test,y_test,x_train,y_train = train_val_split(inputs,sst3_labels,0.05)
 
-	hyena_model = StrippedHyena(len(AMINO_TO_INT_DICT),32,31,6)
+	hyena_model = StrippedHyena(len(AMINO_TO_INT_DICT),32,31,6,4)
 
 	print(ModelSummary(hyena_model))
 	
